@@ -1,0 +1,17 @@
+/* IMÁGENES DE PRODUCTOS */
+.producto-img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover; /* 🔥 evita que se deformen */
+  border-radius: 10px;
+}
+
+/* TARJETAS */
+.card {
+  border-radius: 15px;
+}
+
+/* ESPACIADO */
+.card-body {
+  text-align: center;
+}
