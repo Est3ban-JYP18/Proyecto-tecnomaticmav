@@ -1,0 +1,186 @@
+-- APP.JSX
+
+import { useState } from "react";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import Cotizaciones from "./pages/Cotizaciones";
+import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
+
+function App() {
+  const [pagina, setPagina] = useState("home");
+  const [usuario, setUsuario] = useState(null);
+
+  const handleLogin = (user) => {
+    const fakeToken = "123456789TOKEN";
+    localStorage.setItem("token", fakeToken);
+    setUsuario(user);
+    setPagina("dashboard");
+  };
+
+  const renderPagina = () => {
+    switch (pagina) {
+      case "login":
+        return <Login onLogin={handleLogin} />;
+      case "dashboard":
+        return <Dashboard usuario={usuario} setPagina={setPagina} />;
+      case "cotizaciones":
+        return <Cotizaciones />;
+      default:
+        return <Home />;
+    }
+  };
+
+  return (
+    <>
+      <Navbar setPagina={setPagina} usuario={usuario} />
+      {renderPagina()}
+      <Footer />
+    </>
+  );
+}
+
+export default App;
+
+
+-- NAVBAR.JSX
+
+function Navbar({ setPagina }) {
+  return (
+    <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+      <div className="container">
+
+        {/* LOGO */}
+        <span 
+          className="navbar-brand fw-bold"
+          style={{ cursor: "pointer" }}
+          onClick={() => setPagina("home")}
+        >
+          Tecnomatic MAV
+        </span>
+
+        {/* BOTÓN RESPONSIVE */}
+        <button
+          className="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#menuNavbar"
+        >
+          <span className="navbar-toggler-icon"></span>
+        </button>
+
+        {/* MENÚ */}
+        <div className="collapse navbar-collapse" id="menuNavbar">
+
+          {/* LINKS IZQUIERDA */}
+          <ul className="navbar-nav me-auto">
+
+            <li className="nav-item">
+              <button
+                className="nav-link btn btn-link text-light"
+                onClick={() => setPagina("home")}
+              >
+                Inicio
+              </button>
+            </li>
+
+            <li className="nav-item">
+              <button className="nav-link btn btn-link text-light">
+                Quiénes Somos
+              </button>
+            </li>
+
+            <li className="nav-item">
+              <button className="nav-link btn btn-link text-light">
+                Contáctanos
+              </button>
+            </li>
+
+          </ul>
+
+          {/* BOTÓN DERECHA */}
+          <div className="d-flex">
+            <button
+              className="btn btn-outline-light"
+              onClick={() => setPagina("login")}
+            >
+              Iniciar Sesión
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+export default Navbar;
+
+
+-- Dashboard.jsx 
+
+function Dashboard({ usuario, setPagina }) {
+  return (
+    <div className="container mt-5">
+
+      <div className="mb-4">
+        <h2 className="fw-bold">Bienvenido, {usuario?.correo}</h2>
+        <p className="text-muted">Panel de control del sistema</p>
+      </div>
+
+      <div className="row g-4">
+
+        <div className="col-md-4">
+          <div className="card shadow-sm h-100 text-center p-3">
+            <h5 className="fw-bold">Inventario</h5>
+            <p>Gestiona los productos disponibles</p>
+            <button className="btn btn-dark">
+              Ver Inventario
+            </button>
+          </div>
+        </div>
+
+        {/* ✅ COTIZACIONES FUNCIONA */}
+        <div className="col-md-4">
+          <div className="card shadow-sm h-100 text-center p-3">
+            <h5 className="fw-bold">Cotizaciones</h5>
+            <p>Crea y consulta cotizaciones</p>
+            <button 
+              className="btn btn-dark"
+              onClick={() => setPagina("cotizaciones")}
+            >
+              Ir a Cotizaciones
+            </button>
+          </div>
+        </div>
+
+        <div className="col-md-4">
+          <div className="card shadow-sm h-100 text-center p-3">
+            <h5 className="fw-bold">Perfil</h5>
+            <p>Consulta tu información</p>
+            <button className="btn btn-dark">
+              Ver Perfil
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div className="mt-5 text-end">
+        <button
+          className="btn btn-danger"
+          onClick={() => {
+            localStorage.removeItem("token");
+            setPagina("home");
+          }}
+        >
+          Cerrar Sesión
+        </button>
+      </div>
+
+    </div>
+  );
+}
+
+export default Dashboard;
