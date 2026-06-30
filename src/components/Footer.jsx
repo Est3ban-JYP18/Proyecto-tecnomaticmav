@@ -1,3 +1,4 @@
+// Footer component
 function Footer({ setPagina }) {
 
   const irInicio = () => {
