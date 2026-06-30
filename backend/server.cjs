@@ -444,21 +444,28 @@ app.get("/mis-devoluciones/:idUsuario", (req, res) => {
   const { idUsuario } = req.params;
 
   const query = `
-    SELECT
-  d.idDevoluciones,
-  d.Facturas_idFacturas,
-  d.Cantidad,
-  d.Motivo,
-  d.Estado,
-  d.Fecha,
-  p.Nombre_Producto,
-  u.Nombres,
-  u.Apellidos
-    FROM Devoluciones d
-    JOIN Productos p 
-      ON d.Productos_idProductos = p.idProductos
-    WHERE d.Usuarios_idUsuarios = ?
-    ORDER BY d.Fecha DESC
+SELECT
+    d.idDevoluciones,
+    d.Facturas_idFacturas,
+    d.Cantidad,
+    d.Motivo,
+    d.Estado,
+    d.Fecha,
+    p.Nombre_Producto,
+    u.Nombres,
+    u.Apellidos
+
+FROM Devoluciones d
+
+JOIN Productos p
+ON d.Productos_idProductos = p.idProductos
+
+JOIN Usuarios u
+ON d.Usuarios_idUsuarios = u.idUsuarios
+
+WHERE d.Usuarios_idUsuarios = ?
+
+ORDER BY d.Fecha DESC
   `;
 
   db.query(query, [idUsuario], (err, result) => {
