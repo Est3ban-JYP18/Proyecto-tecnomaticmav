@@ -162,33 +162,34 @@ function Carrito({ carrito, eliminarDelCarrito, actualizarCantidad, vaciarCarrit
           numeroCedula: cedula,
           banco: selectedBanco,
           tipoCuenta: "Ahorros",
-          tipoPersona: tipoPersona === "natural" ? "0" : "1" // 0 Natural, 1 Jurídica
+          tipoPersona: tipoPersona === "natural" ? "0" : "1", // 0 Natural, 1 Jurídica
+          telefono: telefono // 👈 Enviamos la variable de estado 'telefono' al backend
         };
 
-        const responsePSE = await fetch("http://localhost:3001/pagar-pse", {
+const responsePSE = await fetch("http://localhost:3001/pagar-pse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(pseData)
         });
 
-        if (!responsePSE.ok) throw new Error("Error procesando pago PSE en Mercado Pago");
+if (!responsePSE.ok) throw new Error("Error procesando pago PSE en Mercado Pago");
         const pseResult = await responsePSE.json();
 
         // Vaciar carrito
         vaciarCarrito();
 
-        if (pseResult.redirect_url) {
+if (pseResult.redirect_url) {
           Swal.fire({
             icon: "success",
             title: "Redireccionando a tu banco...",
-            text: "Te enviaremos al portal de PSE.",
+            text: "Te enviaremos al portal de PSE de forma segura.",
             confirmButtonColor: "#20B2AA",
             timer: 2000,
             showConfirmButton: false
           });
 
-          setTimeout(() => {
-            window.location.href = pseResult.redirect_url;
+setTimeout(() => {
+            window.location.href = pseResult.redirect_url; // Redirige directamente a PSE
           }, 1500);
         } else {
           Swal.fire({

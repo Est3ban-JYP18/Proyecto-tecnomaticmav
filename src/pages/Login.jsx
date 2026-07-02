@@ -24,21 +24,24 @@ function Login({ onLogin }) {
         throw new Error(errData.message || "Credenciales incorrectas");
       }
 
-      const dbUser = await response.json();
-      
-      // Mapear Roles_idRoles de la base de datos a rol del frontend
-      let rol = "cliente";
-      if (dbUser.Roles_idRoles === 1) rol = "admin";
-      if (dbUser.Roles_idRoles === 2) rol = "contador";
-      if (dbUser.Roles_idRoles === 3) rol = "cliente";
+const data = await response.json();
 
-      const mappedUser = {
-        ...dbUser,
-        rol,
-      };
+const dbUser = data.usuario;
 
-      localStorage.setItem("token", dbUser.token || "fake-token-12345");
-      localStorage.setItem("usuario", JSON.stringify(mappedUser));
+// Mapear Roles_idRoles de la base de datos a rol del frontend
+let rol = "cliente";
+
+if (dbUser.Roles_idRoles === 1) rol = "admin";
+if (dbUser.Roles_idRoles === 2) rol = "contador";
+if (dbUser.Roles_idRoles === 3) rol = "cliente";
+
+const mappedUser = {
+  ...dbUser,
+  rol,
+};
+
+localStorage.setItem("token", data.token);
+localStorage.setItem("usuario", JSON.stringify(mappedUser));
 
       Swal.fire({
         icon: "success",

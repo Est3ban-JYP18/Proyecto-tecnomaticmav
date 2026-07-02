@@ -1,0 +1,51 @@
+{
+  "usuarios": [
+    {
+      "id": "1",
+      "correo": "cliente@gmail.com",
+      "password": "123",
+      "rol": "cliente",
+      "token": "token_cliente_123"
+    },
+    {
+      "id": "2",
+      "correo": "admin@gmail.com",
+      "password": "123",
+      "rol": "admin",
+      "token": "token_admin_456"
+    },
+    {
+      "id": "3",
+      "correo": "contador@gmail.com",
+      "password": "123",
+      "rol": "contador",
+      "token": "token_contador_789"
+    },
+    {
+      "correo": "dylan@gmail.com",
+      "password": "1234",
+      "rol": "cliente",
+      "token": "token_dylan@gmail.com",
+      "id": "rTa6BmrG8iA"
+    },
+    {
+      "nombre": "Dylan Stiven Fierro Molina",
+      "telefono": "3125555555",
+      "correo": "dylan1@gmail.com",
+      "password": "1234",
+      "rol": "cliente",
+      "token": "token_1776832699788",
+      "id": "RP4w1fz217s"
+    },
+    {
+      "nombre": "Sara Cifuentes",
+      "telefono": "3133333333",
+      "correo": "dylan12@gmail.com",
+      "password": "1234",
+      "rol": "cliente",
+      "token": "token_1776874801105",
+      "id": "AuaaVxHHygQ"
+    }
+  ],
+  "$schema": "./node_modules/json-server/schema.json"
+}

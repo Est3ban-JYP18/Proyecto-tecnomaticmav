@@ -1,6 +1,8 @@
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const verifyToken = require("./middleware/verifyToken");
 require("dotenv").config();
 
 let nodemailer = null;
@@ -48,9 +50,13 @@ const enviarCodigoCorreo = async (correo, codigo) => {
   return true;
 };
 
+console.log("Creando cliente MP...");
+
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
 });
+
+console.log("Cliente creado correctamente");
 
 
 const db = mysql.createConnection({
@@ -74,7 +80,7 @@ app.get("/hola", (req, res) => {
 });
 
 
-app.post("/usuarios", (req, res) => {
+app.post("/usuarios", verifyToken, (req, res) => {
   const { nombres, apellidos, correo, contrasena } = req.body;
   const query = "INSERT INTO Usuarios (Nombres, Apellidos, Correo, Contrasena, Roles_idRoles) VALUES (?, ?, ?, ?, ?)";
   db.query(query, [nombres, apellidos, correo, contrasena, 3], (err) => {
@@ -198,14 +204,53 @@ app.post("/password/restablecer", (req, res) => {
 
 app.post("/login", (req, res) => {
   const { correo, contrasena } = req.body;
-  const query = "SELECT * FROM Usuarios WHERE Correo = ? AND Contrasena = ?";
+  const query = `
+    SELECT *
+    FROM Usuarios
+    WHERE Correo = ? AND Contrasena = ?
+  `;
   db.query(query, [correo, contrasena], (err, result) => {
-    if (err) return res.status(500).json({ message: "Error en base de datos" });
-    if (result.length > 0) res.json(result[0]);
-    else res.status(401).json({ message: "Credenciales incorrectas" });
+    if (err) {
+      console.error(err);
+      return res.status(500).json({
+        message: "Error en la base de datos"
+      });
+    }
+    if (result.length === 0) {
+      return res.status(401).json({
+        message: "Credenciales incorrectas"
+      });
+    }
+const usuario = result[0];
+
+// Generar JWT
+const token = jwt.sign(
+  {
+    id: usuario.idUsuarios,
+    correo: usuario.Correo,
+    rol: usuario.Roles_idRoles
+  },
+  process.env.JWT_SECRET,
+  {
+    expiresIn: "8h"
+  }
+);
+
+// Respuesta
+res.json({
+  message: "Inicio de sesión exitoso",
+  token,
+  usuario
+    });
   });
 });
 
+app.get("/perfil", verifyToken, (req, res) => {
+  res.json({
+    mensaje: "Acceso permitido",
+    usuario: req.usuario
+  });
+});
 
 app.get("/productos", (req, res) => {
   const { categoria, precioMax } = req.query;
@@ -243,7 +288,7 @@ app.get("/admin/productos", (req, res) => {
   });
 });
 
-app.post("/admin/productos", (req, res) => {
+app.post("/admin/productos",verifyToken, (req, res) => {
   const { nombre, tipo, descripcion, precio, imagen, categoria, estado } = req.body;
   const query = "INSERT INTO Productos (Nombre_Producto, Tipo, Descripcion, Precio, Imagen, Estado, Categoria_producto_idCategoria) VALUES (?, ?, ?, ?, ?, ?, ?)";
   db.query(query, [nombre, tipo, descripcion, precio, imagen, estado || "Activo", categoria], (err, result) => {
@@ -255,7 +300,7 @@ app.post("/admin/productos", (req, res) => {
   });
 });
 
-app.put("/admin/productos/:id", (req, res) => {
+app.put("/admin/productos/:id",verifyToken, (req, res) => {
   const { nombre, tipo, descripcion, precio, imagen, categoria, estado } = req.body;
   const query = "UPDATE Productos SET Nombre_Producto=?, Tipo=?, Descripcion=?, Precio=?, Imagen=?, Estado=?, Categoria_producto_idCategoria=? WHERE idProductos=?";
   db.query(query, [nombre, tipo, descripcion, precio, imagen, estado, categoria, req.params.id], (err) => {
@@ -314,7 +359,7 @@ app.post("/pedidos", (req, res) => {
 
 app.get("/facturas", (req, res) => {
   const query = `
-    SELECT f.idFacturas, f.Fecha, f.Estado, f.Total,
+    SELECT f.idFacturas, f.Fecha, f.Estado, f.Total, f.Usuarios_idUsuarios,
            u.Nombres, u.Apellidos
     FROM Facturas f
     JOIN Usuarios u ON f.Usuarios_idUsuarios = u.idUsuarios
@@ -373,7 +418,12 @@ app.post("/devoluciones", (req, res) => {
     productoId, idProducto,
     usuarioId, idUsuario,
     cantidad,
-    motivo
+    motivo,
+    motivoCategoria,
+    metodoReembolso,
+    metodoRetorno,
+    direccionRetorno,
+    evidenciaUrl
   } = req.body;
 
   const fId = facturaId || idFactura;
@@ -382,15 +432,17 @@ app.post("/devoluciones", (req, res) => {
 
   const query = `
     INSERT INTO Devoluciones
-    (Facturas_idFacturas, Productos_idProductos, Usuarios_idUsuarios, Cantidad, Motivo, Estado, Fecha)
-    VALUES (?, ?, ?, ?, ?, 'Pendiente', CURDATE())
+    (Facturas_idFacturas, Productos_idProductos, Usuarios_idUsuarios, Cantidad, Motivo, Estado, Fecha,
+     Motivo_Categoria, Metodo_Reembolso, Metodo_Retorno, Direccion_Retorno, Evidencia_Url, Estado_Tracking)
+    VALUES (?, ?, ?, ?, ?, 'Pendiente', CURDATE(), ?, ?, ?, ?, ?, 'Solicitada')
   `;
 
   db.query(
     query,
-    [fId, pId, uId, cantidad, motivo],
+    [fId, pId, uId, cantidad, motivo, motivoCategoria || null, metodoReembolso || null, metodoRetorno || null, direccionRetorno || null, evidenciaUrl || null],
     (err, result) => {
       if (err) {
+        console.error("Error al insertar devolución:", err);
         return res.status(500).json({
           error: err.sqlMessage
         });
@@ -410,18 +462,26 @@ app.get("/mis-devoluciones/:idUsuario", (req, res) => {
 
   const query = `
     SELECT
-  d.idDevoluciones,
-  d.Facturas_idFacturas,
-  d.Cantidad,
-  d.Motivo,
-  d.Estado,
-  d.Fecha,
-  p.Nombre_Producto,
-  u.Nombres,
-  u.Apellidos
+      d.idDevoluciones,
+      d.Facturas_idFacturas,
+      d.Cantidad,
+      d.Motivo,
+      d.Estado,
+      d.Fecha,
+      d.Motivo_Categoria,
+      d.Metodo_Reembolso,
+      d.Metodo_Retorno,
+      d.Direccion_Retorno,
+      d.Evidencia_Url,
+      d.Comentarios_Admin,
+      d.Codigo_Cupon,
+      d.Estado_Tracking,
+      p.Nombre_Producto,
+      u.Nombres,
+      u.Apellidos
     FROM Devoluciones d
-    JOIN Productos p 
-      ON d.Productos_idProductos = p.idProductos
+    JOIN Productos p ON d.Productos_idProductos = p.idProductos
+    JOIN Usuarios u ON d.Usuarios_idUsuarios = u.idUsuarios
     WHERE d.Usuarios_idUsuarios = ?
     ORDER BY d.Fecha DESC
   `;
@@ -439,39 +499,36 @@ app.get("/mis-devoluciones/:idUsuario", (req, res) => {
 
 // ADMIN VE DEVOLUCIONES
 app.get("/devoluciones", (req, res) => {
-
-const query = `
-  SELECT 
-    d.idDevoluciones,
-    d.Facturas_idFacturas,
-    d.Productos_idProductos,
-    d.Usuarios_idUsuarios,
-    d.Cantidad,
-    d.Motivo,
-    d.Fecha,
-    d.Estado,
-
-    p.Nombre_Producto,
-
-    u.Nombres,
-    u.Apellidos
-
-  FROM devoluciones d
-
-  INNER JOIN productos p
-    ON d.Productos_idProductos = p.idProductos
-
-  INNER JOIN usuarios u
-    ON d.Usuarios_idUsuarios = u.idUsuarios
-
-  ORDER BY d.idDevoluciones DESC
-`;
+  const query = `
+    SELECT 
+      d.idDevoluciones,
+      d.Facturas_idFacturas,
+      d.Productos_idProductos,
+      d.Usuarios_idUsuarios,
+      d.Cantidad,
+      d.Motivo,
+      d.Fecha,
+      d.Estado,
+      d.Motivo_Categoria,
+      d.Metodo_Reembolso,
+      d.Metodo_Retorno,
+      d.Direccion_Retorno,
+      d.Evidencia_Url,
+      d.Comentarios_Admin,
+      d.Codigo_Cupon,
+      d.Estado_Tracking,
+      p.Nombre_Producto,
+      u.Nombres,
+      u.Apellidos
+    FROM Devoluciones d
+    INNER JOIN Productos p ON d.Productos_idProductos = p.idProductos
+    INNER JOIN Usuarios u ON d.Usuarios_idUsuarios = u.idUsuarios
+    ORDER BY d.idDevoluciones DESC
+  `;
 
   db.query(query, (err, result) => {
-
     if (err) {
       console.log(err);
-
       return res.status(500).json({
         error: err.sqlMessage
       });
@@ -649,8 +706,41 @@ app.get("/stock/movimientos/:id", (req, res) => {
   });
 });
 
+app.get("/test-mp", async (req, res) => {
+  try {
+
+    const preference = new Preference(client);
+
+    const respuesta = await preference.create({
+      body: {
+        items: [
+          {
+            title: "Producto prueba",
+            quantity: 1,
+            unit_price: 1000
+          }
+        ]
+      }
+    });
+
+    res.json(respuesta);
+
+  } catch (e) {
+
+    console.log(e);
+
+    res.status(500).json({
+      message: e.message,
+      cause: e.cause,
+      error: e
+    });
+
+  }
+});
 
 app.post("/crear-pago", async (req, res) => {
+    console.log("BODY RECIBIDO:");
+    console.log(req.body);
   try {
     const { carrito } = req.body;
     if (!carrito || carrito.length === 0) return res.status(400).json({ error: "Carrito vacío" });
@@ -659,8 +749,10 @@ app.post("/crear-pago", async (req, res) => {
       title: p.Nombre_Producto,
       quantity: Number(p.cantidad),
       unit_price: Number(p.Precio),
-      currency_id: "COP",
+      
     }));
+       console.log("ITEMS:");
+    console.log(items);
 
     const preference = new Preference(client);
     const response = await preference.create({
@@ -884,14 +976,18 @@ app.delete("/facturas/:id", (req, res) => {
 // ============================================================
 app.put("/devoluciones/:id/aprobar", (req, res) => {
   const { id } = req.params;
+  const { comentariosAdmin, codigoCupon } = req.body;
 
   const query = `
     UPDATE devoluciones
-    SET Estado = 'Aprobada'
+    SET Estado = 'Aprobada',
+        Estado_Tracking = 'Resuelta',
+        Comentarios_Admin = ?,
+        Codigo_Cupon = ?
     WHERE idDevoluciones = ?
   `;
 
-  db.query(query, [id], (err, result) => {
+  db.query(query, [comentariosAdmin || null, codigoCupon || null, id], (err, result) => {
     if (err) {
       return res.status(500).json({
         error: err.sqlMessage
@@ -909,14 +1005,17 @@ app.put("/devoluciones/:id/aprobar", (req, res) => {
 // ============================================================
 app.put("/devoluciones/:id/rechazar", (req, res) => {
   const { id } = req.params;
+  const { comentariosAdmin } = req.body;
 
   const query = `
     UPDATE devoluciones
-    SET Estado = 'Rechazada'
+    SET Estado = 'Rechazada',
+        Estado_Tracking = 'Rechazada',
+        Comentarios_Admin = ?
     WHERE idDevoluciones = ?
   `;
 
-  db.query(query, [id], (err, result) => {
+  db.query(query, [comentariosAdmin || null, id], (err, result) => {
     if (err) {
       return res.status(500).json({
         error: err.sqlMessage
@@ -925,6 +1024,32 @@ app.put("/devoluciones/:id/rechazar", (req, res) => {
 
     res.json({
       message: "Devolución rechazada"
+    });
+  });
+});
+
+// ============================================================
+// ACTUALIZAR ESTADO DE TRACKING (Paso a paso por el admin)
+// ============================================================
+app.put("/devoluciones/:id/tracking", (req, res) => {
+  const { id } = req.params;
+  const { estadoTracking } = req.body;
+
+  const query = `
+    UPDATE devoluciones
+    SET Estado_Tracking = ?
+    WHERE idDevoluciones = ?
+  `;
+
+  db.query(query, [estadoTracking, id], (err, result) => {
+    if (err) {
+      return res.status(500).json({
+        error: err.sqlMessage
+      });
+    }
+
+    res.json({
+      message: "Estado de tracking actualizado correctamente"
     });
   });
 });
