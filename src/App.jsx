@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"; 
+import { useState, useEffect } from "react";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Productos from "./components/Productos";
@@ -12,16 +12,27 @@ import Panel from "./components/Panel";
 import TablaUsuarios from "./components/TablaUsuarios";
 import MisPedidos from "./components/MisPedidos";
 import Devoluciones from "./components/Devoluciones";
-
+import Swal from "sweetalert2";
 
 function App() {
   const [pagina, setPagina] = useState("home");
   const [usuario, setUsuario] = useState(null);
-  
+
   // Estado del Carrito de Compras Global
   const [carrito, setCarrito] = useState(() => {
     const saved = localStorage.getItem("carrito");
-    return saved ? JSON.parse(saved) : [];
+    try {
+      // Los artículos antiguos no tenían talla; se conservan como talla M.
+      return saved
+        ? JSON.parse(saved).map((item) => ({
+            ...item,
+            Talla: item.Talla || "M",
+            Color: item.Color || "Único",
+          }))
+        : [];
+    } catch {
+      return [];
+    }
   });
 
   // Persistir carrito en localStorage
@@ -50,29 +61,89 @@ function App() {
   };
 
   // Funciones de Carrito
-  const agregarAlCarrito = (producto) => {
+  const agregarAlCarrito = (producto, talla = "M", color = "Único") => {
+    const stockDisponible =
+      producto.Stock !== undefined ? Number(producto.Stock) : 9999;
+
+    if (stockDisponible <= 0) {
+      Swal.fire({
+        icon: "error",
+        title: "Producto Agotado",
+        text: "Lo sentimos, este producto no cuenta con unidades disponibles en este momento.",
+        confirmButtonColor: "#0047AB",
+      });
+      return;
+    }
+
     setCarrito((prev) => {
-      // Comparar por idProductos de MySQL
-      const index = prev.findIndex((item) => item.idProductos === producto.idProductos);
+      // Cada combinación producto + talla tiene su propia línea en el carrito.
+      const index = prev.findIndex(
+        (item) =>
+          item.idProductos === producto.idProductos && item.Talla === talla && item.Color === color,
+      );
+      const cantidadTotalProducto = prev
+        .filter((item) => item.idProductos === producto.idProductos)
+        .reduce((total, item) => total + item.cantidad, 0);
       if (index > -1) {
         const nuevo = [...prev];
-        nuevo[index].cantidad += 1;
+        if (cantidadTotalProducto < stockDisponible) {
+          nuevo[index].cantidad += 1;
+        } else {
+          Swal.fire({
+            icon: "warning",
+            title: "Límite de Stock Alcanzado",
+            text: `No puedes agregar más unidades de las disponibles (${stockDisponible} unidades en inventario).`,
+            confirmButtonColor: "#0047AB",
+          });
+        }
         return nuevo;
       } else {
-        return [...prev, { ...producto, cantidad: 1 }];
+        if (cantidadTotalProducto >= stockDisponible) {
+          Swal.fire({
+            icon: "warning",
+            title: "Límite de Stock Alcanzado",
+            text: `No puedes agregar más unidades de las disponibles (${stockDisponible} unidades en inventario).`,
+            confirmButtonColor: "#0047AB",
+          });
+          return prev;
+        }
+        return [...prev, { ...producto, Talla: talla, Color: color, cantidad: 1 }];
       }
     });
   };
 
-  const eliminarDelCarrito = (id) => {
-    setCarrito((prev) => prev.filter((item) => item.idProductos !== id));
+  const eliminarDelCarrito = (id, talla, color) => {
+    setCarrito((prev) =>
+      prev.filter((item) => !(item.idProductos === id && item.Talla === talla && (item.Color || "Único") === color)),
+    );
   };
 
-  const actualizarCantidad = (id, cantidad) => {
+  const actualizarCantidad = (id, talla, color, cantidad) => {
     setCarrito((prev) =>
-      prev.map((item) =>
-        item.idProductos === id ? { ...item, cantidad: Math.max(1, cantidad) } : item
-      )
+      prev.map((item) => {
+        if (item.idProductos === id && item.Talla === talla && (item.Color || "Único") === color) {
+          const stockDisponible =
+            item.Stock !== undefined ? Number(item.Stock) : 9999;
+          const cantidadOtrasTallas = prev
+            .filter((otro) => !(otro.idProductos === id && otro.Talla === talla && (otro.Color || "Único") === color))
+            .reduce((total, otro) => total + otro.cantidad, 0);
+          const maximoParaEstaTalla = Math.max(
+            0,
+            stockDisponible - cantidadOtrasTallas,
+          );
+          if (cantidad > maximoParaEstaTalla) {
+            Swal.fire({
+              icon: "warning",
+              title: "Límite de Stock Alcanzado",
+              text: `Solo hay ${stockDisponible} unidades disponibles de este producto.`,
+              confirmButtonColor: "#0047AB",
+            });
+            return { ...item, cantidad: Math.max(1, maximoParaEstaTalla) };
+          }
+          return { ...item, cantidad: Math.max(1, cantidad) };
+        }
+        return item;
+      }),
     );
   };
 
@@ -87,18 +158,19 @@ function App() {
 
       case "productos":
         return (
-          <Productos 
-            agregarAlCarrito={agregarAlCarrito} 
-            carrito={carrito} 
+          <Productos
+            agregarAlCarrito={agregarAlCarrito}
+            carrito={carrito}
+            usuario={usuario}
             setPagina={setPagina}
           />
         );
 
       case "carrito":
         return (
-          <Carrito 
-            carrito={carrito} 
-            eliminarDelCarrito={eliminarDelCarrito} 
+          <Carrito
+            carrito={carrito}
+            eliminarDelCarrito={eliminarDelCarrito}
             actualizarCantidad={actualizarCantidad}
             vaciarCarrito={vaciarCarrito}
             usuario={usuario}
@@ -110,34 +182,47 @@ function App() {
         return <Informacion />;
 
       case "tablaCotizaciones":
-        return usuario?.rol === "admin"
-          ? <TablaCotizaciones />
-          : <Home setPagina={setPagina} />;
+        return usuario?.rol === "admin" ? (
+          <TablaCotizaciones />
+        ) : (
+          <Home setPagina={setPagina} />
+        );
 
       case "tablaProductos":
-        return usuario?.rol === "admin"
-          ? <TablaProductos />
-          : <Home setPagina={setPagina} />;
+        return usuario?.rol === "admin" ? (
+          <TablaProductos />
+        ) : (
+          <Home setPagina={setPagina} />
+        );
 
       case "tablaUsuarios":
-        return usuario?.rol === "admin"
-          ? <TablaUsuarios />
-          : <Home setPagina={setPagina} />;
+        return usuario?.rol === "admin" ? (
+          <TablaUsuarios />
+        ) : (
+          <Home setPagina={setPagina} />
+        );
 
       case "devoluciones":
-        return usuario?.rol === "admin"
-          ? <Devoluciones />
-          : <Home setPagina={setPagina} />;
+        return usuario?.rol === "admin" ? (
+          <Devoluciones />
+        ) : (
+          <Home setPagina={setPagina} />
+        );
 
       case "misPedidos":
-        return usuario?.rol === "cliente"
-          ? <MisPedidos usuario={usuario} setPagina={setPagina} />
-          : <Home setPagina={setPagina} />;
+        console.log("Usuario en MisPedidos:", usuario);
+        return usuario?.rol === "cliente" ? (
+          <MisPedidos usuario={usuario} setPagina={setPagina} />
+        ) : (
+          <Home setPagina={setPagina} />
+        );
 
       case "panel":
-        return usuario?.rol === "contador"
-          ? <Panel />
-          : <Home setPagina={setPagina} />;
+        return usuario?.rol === "contador" ? (
+          <Panel />
+        ) : (
+          <Home setPagina={setPagina} />
+        );
 
       default:
         return <Home setPagina={setPagina} />;
@@ -146,7 +231,11 @@ function App() {
 
   return (
     <div className="d-flex flex-column min-vh-100">
-      <Navbar setPagina={setPagina} usuario={usuario} cantidadCarrito={carrito.reduce((acc, p) => acc + p.cantidad, 0)} />
+      <Navbar
+        setPagina={setPagina}
+        usuario={usuario}
+        cantidadCarrito={carrito.reduce((acc, p) => acc + p.cantidad, 0)}
+      />
       <main className="flex-fill">{renderPagina()}</main>
       <Footer setPagina={setPagina} />
     </div>
